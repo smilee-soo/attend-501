@@ -140,7 +140,7 @@
       window.location.href = 'index.html';
     }
     
-    function showStatus(type, message, autoHide) {
+    function (type, message, autoHide) {
       const el = document.getElementById('status');
       el.className = 'status ' + type;
       el.textContent = message;
@@ -166,9 +166,9 @@
           onScanSuccess,
           () => {}
         );
-        showStatus('info', 'QR을 카메라에 비춰주세요', false);
+        ('info', 'QR을 카메라에 비춰주세요', false);
       } catch (err) {
-        showStatus('error', '카메라 접근 실패: ' + err.message, false);
+        ('error', '카메라 접근 실패: ' + err.message, false);
         startBtn.style.display = 'block';
         reader.style.display = 'none';
       }
@@ -183,8 +183,10 @@
       
       showStatus('info', '처리 중...', false);
       const slowTimer = setTimeout(() => {
-        showStatus('info', '⏳ 출석하는 학생이 많아 처리 중입니다.\n화면을 끄거나 다시 찍지 말고 기다려 주세요 (최대 1분)', false);
+        showStatus('info', '⏳ 출석하는 학생이 많아 처리 중입니다.\n화면을 끄거나 다시 찍지 말고 기다려 주세요 (최대 1분 30초)', false);
       }, 8000);
+      const ctrl = new AbortController();
+      const killTimer = setTimeout(() => ctrl.abort(), 90000);
 
       try {
         const response = await fetch(APPS_SCRIPT_URL, {
@@ -195,21 +197,27 @@
             name: studentName,
             password: studentPw,
             qrCode: decodedText
-          })
+          }),
+          signal: ctrl.signal
         });
-        
-        const result = await response.json();
-        
+
+        const text = await response.text();
+        let result;
+        try { result = JSON.parse(text); } catch (e) { throw new Error('응답 형식 오류'); }
+
         if (result.success) {
           const action = result.action || '기록';
           showStatus('success', '✅ ' + action + ' 완료\n' + result.message, true);
         } else {
-          showStatus('error', '❌ ' + (result.message || '실패'), true);
+          showStatus('error', '❌ 출석이 기록되지 않았어요\n' + (result.message || '실패') +
+                     '\n\n태블릿의 새 QR로 다시 찍어 주세요', true);
         }
       } catch (err) {
-        showStatus('error', '❌ 서버 오류: ' + err.message, true);
+        const msg = (err.name === 'AbortError') ? '응답이 너무 늦어요' : err.message;
+        showStatus('error', '❌ 출석이 기록되지 않았을 수 있어요\n(' + msg + ')\n\n1분 뒤 다시 찍거나 스탭에게 이름을 말해 주세요', true);
       } finally {
         clearTimeout(slowTimer);
+        clearTimeout(killTimer);
         setTimeout(() => { isProcessing = false; }, 3000);
       }
     }
